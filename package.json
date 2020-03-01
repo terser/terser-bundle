@@ -1,0 +1,58 @@
+{
+  "name": "terser-bundle",
+  "version": "0.0.0",
+  "description": "A bundler that's tightly integrated with Terser",
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "mocha --require test/test-prelude.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/terser/terser-bundle.git"
+  },
+  "keywords": [
+    "bundler",
+    "compiler",
+    "terser"
+  ],
+  "author": "Fábio Santos <fabiosantosart@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/terser/terser-bundle/issues"
+  },
+  "homepage": "https://github.com/terser/terser-bundle#readme",
+  "devDependencies": {
+    "husky": "^3.1.0",
+    "lint-staged": "^9.5.0",
+    "mocha": "^6.2.2",
+    "standard": "^14.3.1",
+    "standard-format": "^2.2.4"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  },
+  "standard": {
+    "globals": [
+      "context",
+      "describe",
+      "it",
+      "beforeEach"
+    ]
+  },
+  "lint-staged": {
+    "*.js": [
+      "standard --fix",
+      "git add"
+    ]
+  },
+  "dependencies": {
+    "@dagrejs/graphlib": "^2.1.4",
+    "escodegen": "^1.12.0",
+    "escope": "^3.6.0",
+    "estree-assign-parent": "^1.0.0",
+    "meriyah": "^1.9.3",
+    "scope-analyzer": "^2.0.5"
+  }
+}
