@@ -1,25 +1,25 @@
 'use strict'
 
+const assert = require('assert')
 const { makeGraph, jsEqual } = require('./utils')
 const { compile } = require('../lib/compile')
 
+const opt = async (entry, resolve, graph) => {
+  const out = []
+  const push = out.push.bind(out)
+
+  await compile({
+    entry,
+    graph,
+    push,
+    resolve,
+    sourceMap: false
+  })
+
+  return out.join('\n').replace(/\n+/g, '\n')
+}
+
 describe('compile', () => {
-  const opt = async (entry, resolve, graph) => {
-    const out = []
-    const push = out.push.bind(out)
-
-    await compile({
-      entry,
-      graph,
-      push,
-      resolve,
-      minify: x => ({ code: x }),
-      sourceMap: false
-    })
-
-    return out.join('\n').replace(/\n+/g, '\n')
-  }
-
   it('a single module', async () => {
     const [resolve, graph] = await makeGraph({
       '/index.js': 'alert(1)'
@@ -135,19 +135,34 @@ describe('compile', () => {
     )
   })
 
-  // TODO Test all permutations of
-  //
-  // const { foo } = require('./x.js')
-  // const foo = require('./x.js')
-  // const { foo } = require(...), and in other module const x = require(...)
-  //
-  // and
-  //
-  // exports.x = 6
-  // module.exports = 6
-  // module.exports = { a: 6, b: 6 }
-  // module.exports = ... ; module.exports.xxx = yyy
-  //
+  it('avoids conflicts between globals and top-level variables of modules', async () => {
+    const [resolve, graph] = await makeGraph({
+      '/index.js': `
+        import "./x.js"
+        const x = 4
+        const globalConflict = ''
+      `,
+      '/x.js': `
+        const x = 6
+        function y() {
+          globalConflict()
+        }
+      `
+    })
+
+    jsEqual(
+      await opt('/index.js', resolve, graph),
+      `
+        const x = 6
+        function y() {
+          globalConflict()
+        }
+        const _$_1000_x = 4
+        const _$_1001_globalConflict = ''
+      `
+    )
+  })
+
   it('require calls with destructuring assignment')
 
   it('require calls with the same module required as default and as a chunk')
@@ -165,7 +180,10 @@ describe('compile', () => {
 
     jsEqual(
       await opt('/index.js', resolve, graph),
-      "var { c: _$_1000_c, d: [_$_1001_e] } = { c: 'c', d: ['e'] };\nalert(_$_1001_e, _$_1000_c);"
+      `
+        var { c: _$_1000_c, d: [_$_1001_e] } = { c: 'c', d: ['e'] };
+        alert(_$_1001_e, _$_1000_c);
+      `
     )
   })
 
@@ -222,4 +240,149 @@ describe('compile', () => {
       alert(_$_1000_c, _$_1001_d);
     `)
   })
+})
+
+describe('import/export types permutations', () => {
+  // TODO Test all permutations of
+  //
+  // const { foo } = require('./x.js')
+  // const foo = require('./x.js')
+  // const { foo } = require(...), and in other module const x = require(...)
+  // import foo from "./x.js"
+  // import { foo }  from "./x.js"
+  // import bar, { foo } from "./x.js"
+  //
+  // and
+  //
+  // exports.x = 6
+  // module.exports = 6
+  // module.exports = { a: 6, b: 6 }
+  // module.exports = ... ; module.exports.xxx = yyy
+  // const x = 6; export { 6 }
+  // export const foo = 6
+  // export default 6
+  // export { foo } from "./proxy.js"
+  // export * from "./proxy.js"
+  const importModes = [
+    {
+      modeName: 'pick',
+      code: 'const { foo } = require("./a.js")',
+      imports: [false, true]
+    },
+    {
+      modeName: 'all',
+      code: 'const all = require("./a.js")',
+      imports: [true, false]
+    }
+    /*
+    {
+      modeName: 'two modules',
+      code: 'const { foo } = require("./a.js"); const all = require("./a.js")',
+      imports: [true, true]
+    }
+    */
+  ]
+
+  const exportModes = [
+    {
+      modeName: 'export default',
+      code: 'export default 42',
+      exports: [42, null]
+    },
+    /*
+    {
+      modeName: 'export const',
+      code: 'export const foo = 42',
+      exports: [null, 42]
+    },
+    */
+    {
+      modeName: 'export const and default',
+      code: 'export const foo = 41; export default 42',
+      exports: [42, 41]
+    },
+    {
+      modeName: 'export variables',
+      code: 'const foo = 41; export { foo }',
+      exports: [null, 41]
+    },
+    /*
+    {
+      modeName: 'cjs pick',
+      code: 'exports.foo = 42',
+      exports: [null, 42]
+    },
+    {
+      modeName: 'cjs pick (with module.exports)',
+      code: 'module.exports.foo = 42',
+      exports: [null, 42]
+    },
+    */
+    {
+      modeName: 'cjs export all',
+      code: 'module.exports = 42',
+      exports: [42, null]
+    },
+    {
+      modeName: 'cjs object',
+      code: 'module.exports = { foo: 42 }',
+      exports: [{ foo: 42 }, 42]
+    }
+    /*
+    {
+      modeName: 'cjs all-then-pick',
+      code: 'const x = eval("{ bar: 41 }"); module.exports = x; module.exports.foo = 42',
+      exports: [{foo: 42, bar: 41}, 42]
+    }
+    */
+  ]
+
+  for (const { modeName, code, imports } of importModes) {
+    for (const { modeName: exportModeName, code: exportCode, exports } of exportModes) {
+      const exportSideCoversImportSide = ![0, 1].every(i =>
+        !!imports[i] === !!exports[i])
+
+      if (exportSideCoversImportSide) {
+        continue
+      }
+
+      it(`import: ${modeName}, export: ${exportModeName}`, async () => {
+        const [resolve, graph] = await makeGraph({
+          '/index.js': code,
+          '/a.js': exportCode
+        })
+
+        const result = await opt('/index.js', resolve, graph)
+
+        const [allExport, fooExport] = exports
+
+        // Need to place results here because
+        // const, let, import bindings don't escape eval scope
+        const importedStuff = {}
+
+        /* eslint-disable-next-line no-eval */
+        eval(`
+          ${result};
+
+          if (typeof all !== 'undefined') {
+            importedStuff.all = all
+          }
+          if (typeof foo !== 'undefined') {
+            importedStuff.foo = foo
+          }
+        `)
+
+        // Need non-strict equal because null == undefined
+        /* eslint-disable node/no-deprecated-api */
+        if (allExport) {
+          assert.deepEqual(importedStuff.all, allExport)
+        }
+
+        if (fooExport) {
+          assert.deepEqual(importedStuff.foo, fooExport)
+        }
+        /* eslint-enable node/no-deprecated-api */
+      })
+    }
+  }
 })

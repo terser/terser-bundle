@@ -50,8 +50,6 @@
   "dependencies": {
     "@dagrejs/graphlib": "^2.1.4",
     "escodegen": "^1.12.0",
-    "escope": "^3.6.0",
-    "estree-assign-parent": "^1.0.0",
     "meriyah": "^1.9.3",
     "scope-analyzer": "^2.0.5"
   }

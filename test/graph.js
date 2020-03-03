@@ -235,15 +235,14 @@ describe('buildGraph', () => {
 
     const graph = await buildGraph('/code/index.js', { resolve })
 
-    assert.deepEqual(
-      graph.node('/code/a.js'),
-      {
-        exportedNames: new Set(['y']),
-        proxyExports: new Map([
-          ['y', ['/code/b.js', 'x']]
-        ])
-      }
-    )
+    const { exportedNames, proxyExports } = graph.node('/code/a.js')
+
+    assert.deepEqual({ exportedNames, proxyExports }, {
+      exportedNames: new Set(['y']),
+      proxyExports: new Map([
+        ['y', ['/code/b.js', 'x']]
+      ])
+    })
   })
 
   it('collects indirect proxy exports (export ... from)', async () => {
@@ -283,6 +282,31 @@ describe('buildGraph', () => {
   it('collects export all statements (export * from)')
 
   it('collects indirect export all statements (export * from)')
+
+  it('collects an aggregate of all globals and toplevels', async () => {
+    const resolve = makeModules({
+      '/code/index.js': `
+        import "./a.js"
+        global.bar()
+      `,
+      '/code/a.js': `
+        if (typeof window !== 'undefined') {
+          var toplevel
+        }
+      `
+    })
+
+    const graph = await buildGraph('/code/index.js', { resolve })
+
+    assert.deepEqual(
+      graph.usedNames,
+      new Map([
+        ['global', true],
+        ['toplevel', '/code/a.js'],
+        ['window', true]
+      ])
+    )
+  })
 
   it('borks when importing a non-exported name', async () => {
     const resolve = makeModules({
