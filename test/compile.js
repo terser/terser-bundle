@@ -28,6 +28,37 @@ describe('compile', () => {
     jsEqual(await opt('/index.js', resolve, graph), 'alert(1);')
   })
 
+  it('require calls', async () => {
+    const [resolve, graph] = await makeGraph({
+      '/index.js': `
+        alert(require('./a.js'))
+        alert(require('./b.js'))
+      `,
+      '/a.js': `
+        module.exports = 69
+      `,
+      '/b.js': `
+        exports.foo = 'foo'
+      `
+    })
+
+    jsEqual(
+      await opt('/index.js', resolve, graph),
+      `
+        var _$_1000_default = 69;
+        ;
+        var _$_1001_foo = 'foo';
+        ;
+        alert(_$_1000_default);
+        alert({
+          get foo() {
+            return _$_1001_foo
+          }
+        });
+      `
+    )
+  })
+
   it('imports', async () => {
     const [resolve, graph] = await makeGraph({
       '/index.js': `
@@ -66,6 +97,32 @@ describe('compile', () => {
         var _$_1001_c = 'c';
         nothing();
         alert(_$_1000_a, _$_1001_c);
+      `
+    )
+  })
+
+  it('default imports from commonjs default exports', async () => {
+    const [resolve, graph] = await makeGraph({
+      '/index.js': `
+        import foo, { bar } from "./a.js"
+        alert(foo, bar)
+      `,
+      '/a.js': `
+        module.exports = { bar: 42 }
+      `
+    })
+
+    jsEqual(
+      await opt('/index.js', resolve, graph),
+      `
+        var _$_1000_bar = 42;
+        ;
+        var foo = {
+          get bar() {
+            return _$_1000_bar
+          }
+        }
+        alert(foo, _$_1000_bar)
       `
     )
   })
@@ -130,6 +187,28 @@ describe('compile', () => {
         var _$_1000_default = 42;
         ;  // <- TODO what's this?
         const foo = _$_1000_default;
+        alert(foo)
+      `
+    )
+  })
+
+  it('require calls with destructuring', async () => {
+    const [resolve, graph] = await makeGraph({
+      '/index.js': `
+        const { foo } = require('./foo.js')
+        alert(foo)
+      `,
+      '/foo.js': `
+        exports.foo = 42
+      `
+    })
+
+    jsEqual(
+      await opt('/index.js', resolve, graph),
+      `
+        var _$_1000_foo = 42;
+        ;  // <- TODO what's this?
+        const { foo: foo } = { foo: _$_1000_foo };
         alert(foo)
       `
     )
@@ -265,22 +344,47 @@ describe('import/export types permutations', () => {
   // export * from "./proxy.js"
   const importModes = [
     {
-      modeName: 'pick',
+      modeName: 'cjs pick',
       code: 'const { foo } = require("./a.js")',
       imports: [false, true]
     },
     {
-      modeName: 'all',
+      modeName: 'cjs all',
       code: 'const all = require("./a.js")',
       imports: [true, false]
-    }
-    /*
+    },
     {
-      modeName: 'two modules',
+      modeName: 'cjs two requires',
       code: 'const { foo } = require("./a.js"); const all = require("./a.js")',
       imports: [true, true]
+    },
+    {
+      modeName: 'esm pick',
+      code: `
+        import { foo as foo_x } from "./a.js"
+        var foo = foo_x
+      `,
+      imports: [false, true]
+    },
+    {
+      modeName: 'esm default',
+      code: `
+        import all_x from "./a.js"
+        var all = all_x
+      `,
+      imports: [true, false]
+    },
+    // TODO import *
+    {
+      modeName: 'esm two imports',
+      code: `
+        import { foo as x } from "./a.js"
+        import all_x from "./a.js"
+        var foo = x
+        var all = all_x
+      `,
+      imports: [true, true]
     }
-    */
   ]
 
   const exportModes = [
@@ -289,13 +393,11 @@ describe('import/export types permutations', () => {
       code: 'export default 42',
       exports: [42, null]
     },
-    /*
     {
       modeName: 'export const',
       code: 'export const foo = 42',
       exports: [null, 42]
     },
-    */
     {
       modeName: 'export const and default',
       code: 'export const foo = 41; export default 42',
@@ -306,12 +408,12 @@ describe('import/export types permutations', () => {
       code: 'const foo = 41; export { foo }',
       exports: [null, 41]
     },
-    /*
     {
       modeName: 'cjs pick',
       code: 'exports.foo = 42',
       exports: [null, 42]
     },
+    /*
     {
       modeName: 'cjs pick (with module.exports)',
       code: 'module.exports.foo = 42',
@@ -372,16 +474,22 @@ describe('import/export types permutations', () => {
           }
         `)
 
-        // Need non-strict equal because null == undefined
-        /* eslint-disable node/no-deprecated-api */
-        if (allExport) {
-          assert.deepEqual(importedStuff.all, allExport)
-        }
+        try {
+          // Need non-strict equal because null == undefined
+          /* eslint-disable node/no-deprecated-api */
+          if (allExport) {
+            assert.deepEqual(importedStuff.all, allExport)
+          }
 
-        if (fooExport) {
-          assert.deepEqual(importedStuff.foo, fooExport)
+          if (fooExport) {
+            assert.deepEqual(importedStuff.foo, fooExport)
+          }
+          /* eslint-enable node/no-deprecated-api */
+        } catch (assertionError) {
+          console.log(`\n## result:\n\n${result}\n`)
+          console.log({ importedStuff })
+          throw assertionError
         }
-        /* eslint-enable node/no-deprecated-api */
       })
     }
   }

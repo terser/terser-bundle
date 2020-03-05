@@ -51,6 +51,6 @@
     "@dagrejs/graphlib": "^2.1.4",
     "escodegen": "^1.12.0",
     "meriyah": "^1.9.3",
-    "scope-analyzer": "^2.0.5"
+    "scope-analyzer": "^2.0.6"
   }
 }

@@ -55,6 +55,27 @@ describe('buildGraph', () => {
     ])
   })
 
+  it('records src and depSrc', async () => {
+    const resolve = makeModules({
+      '/code/index.js': `
+        import a from "./a.js";
+      `,
+      '/code/a.js': `
+        export default 1
+      `
+    })
+
+    const graph = await buildGraph('/code/index.js', { resolve })
+
+    const { src, depSrc } = graph.node('/code/index.js')
+
+    assert.equal(src, '/code/index.js')
+
+    assert.deepEqual(depSrc, new Map([
+      ['./a.js', '/code/a.js']
+    ]))
+  })
+
   it('handles modules with multiple deps', async () => {
     const resolve = makeModules({
       '/code/index.js': `
@@ -288,6 +309,32 @@ describe('buildGraph', () => {
       '/code/index.js': `
         import "./a.js"
         global.bar()
+      `,
+      '/code/a.js': `
+        if (typeof window !== 'undefined') {
+          var toplevel
+        }
+      `
+    })
+
+    const graph = await buildGraph('/code/index.js', { resolve })
+
+    assert.deepEqual(
+      graph.usedNames,
+      new Map([
+        ['global', true],
+        ['toplevel', '/code/a.js'],
+        ['window', true]
+      ])
+    )
+  })
+
+  it('does not mark exports as used names', async () => {
+    const resolve = makeModules({
+      '/code/index.js': `
+        import "./a.js"
+        global.bar()
+        export const x = 6
       `,
       '/code/a.js': `
         if (typeof window !== 'undefined') {

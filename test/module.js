@@ -352,6 +352,7 @@ describe('Module', () => {
     assert.deepEqual(imports, [
       {
         commonjs: true,
+        destructuring: true,
         importedName: 'x',
         name: 'x',
         module: './test.js',
@@ -360,6 +361,7 @@ describe('Module', () => {
       },
       {
         commonjs: true,
+        destructuring: true,
         importedName: 'y',
         name: 'zed',
         module: './test.js',
