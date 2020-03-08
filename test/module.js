@@ -118,6 +118,55 @@ describe('Module', () => {
     }])
   })
 
+  it('finds CJS module.exports assignments', () => {
+    const mod = new Module({
+      tree: parseModule(`
+        module.exports = 42
+      `),
+      src: 'index.js'
+    })
+
+    const exported = mod.tree.body[0].expression.right
+
+    assert.deepEqual(mod.exports(), [{
+      commonjs: true,
+      name: 'default',
+      exported,
+      mutable: true
+    }])
+  })
+
+  it('finds CJS module.exports property assignments', () => {
+    const mod = new Module({
+      tree: parseModule(`
+        module.exports.foo = 'bar'
+      `),
+      src: 'index.js'
+    })
+
+    const exported = mod.tree.body[0].expression.right
+
+    assert.deepEqual(mod.exports(), [{
+      commonjs: true,
+      name: 'foo',
+      exported,
+      mutable: true
+    }])
+  })
+
+  it('ignores defined "module" and "exports" variables', () => {
+    const mod = new Module({
+      tree: parseModule(`
+        let module, exports
+        module.exports.foo = 'bar'
+        exports.foo = 'bar'
+      `),
+      src: 'index.js'
+    })
+
+    assert.deepEqual(mod.exports(), [])
+  })
+
   it('finds CJS default exports', () => {
     const mod = new Module({
       tree: parseModule(`

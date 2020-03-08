@@ -413,13 +413,11 @@ describe('import/export types permutations', () => {
       code: 'exports.foo = 42',
       exports: [null, 42]
     },
-    /*
     {
       modeName: 'cjs pick (with module.exports)',
       code: 'module.exports.foo = 42',
       exports: [null, 42]
     },
-    */
     {
       modeName: 'cjs export all',
       code: 'module.exports = 42',
