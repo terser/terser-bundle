@@ -53,7 +53,10 @@ describe('compile', () => {
         alert({
           get foo() {
             return _$_1001_foo
-          }
+          },
+          set foo(value) {
+            _$_1001_foo = value
+          },
         });
       `
     )
@@ -73,6 +76,44 @@ describe('compile', () => {
     jsEqual(
       await opt('/index.js', resolve, graph),
       "var _$_1000_default = 'a';\nalert(_$_1000_default);"
+    )
+  })
+
+  it('imports all', async () => {
+    const [resolve, graph] = await makeGraph({
+      '/index.js': `
+        import * as a from "./a.js"
+        alert(a)
+      `,
+      '/a.js': `
+        export const x = 4
+        export let y = 5
+        export default 6
+      `
+    })
+
+    jsEqual(
+      await opt('/index.js', resolve, graph),
+      `
+        var _$_1000_x = 4
+        var _$_1001_y = 5
+        var _$_1002_default = 6
+        var a = {
+          get x() {
+            return _$_1000_x
+          },
+          get y() {
+            return _$_1001_y
+          },
+          set y(value) {
+            _$_1001_y = value
+          },
+          get default() {
+            return _$_1002_default
+          }
+        }
+        alert(a)
+      `
     )
   })
 
@@ -120,6 +161,9 @@ describe('compile', () => {
         var foo = {
           get bar() {
             return _$_1000_bar
+          },
+          set bar(value) {
+            _$_1000_bar = value
           }
         }
         alert(foo, _$_1000_bar)
