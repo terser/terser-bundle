@@ -459,8 +459,9 @@ describe('buildGraph', () => {
 })
 
 describe('traverse', () => {
-  it('traverses a graph in dependency order', async () => {
-    const resolve = makeModules({
+  let resolve, graph
+  beforeEach(async () => {
+    resolve = makeModules({
       '/code/index.js': `
         import * as x from "./a.js";
 
@@ -468,23 +469,46 @@ describe('traverse', () => {
       `,
       '/code/a.js': `
         export const theFunction = () => null
+      `,
+      '/code/unrelated.js': `
+        alert(1)
       `
     })
 
-    const graph = await buildGraph('/code/index.js', { resolve })
+    graph = await buildGraph(['/code/index.js', '/code/unrelated.js'], { resolve })
+  })
 
+  it('traverses a graph in dependency order', async () => {
     const traverseArgs = []
 
-    await traverse({ resolve, graph, entry: '/code/index.js' }, ({ parent, module }) => {
+    await traverse(graph, '/code/index.js', (module, parent) => {
       traverseArgs.push({ parent, module })
     })
 
-    const index = await resolve(null, '/code/index.js')
-    const a = await resolve(null, '/code/a.js')
+    const index = '/code/index.js'
+    const a = '/code/a.js'
 
     assert.deepEqual(traverseArgs, [
       { parent: index, module: a },
       { parent: null, module: index }
+    ])
+  })
+
+  it('can traverse from :root', async () => {
+    const traverseArgs = []
+
+    await traverse(graph, ':root', (module, parent) => {
+      traverseArgs.push({ parent, module })
+    })
+
+    const index = '/code/index.js'
+    const a = '/code/a.js'
+    const unrelated = '/code/unrelated.js'
+
+    assert.deepEqual(traverseArgs, [
+      { parent: index, module: a },
+      { parent: null, module: index },
+      { parent: null, module: unrelated }
     ])
   })
 })
