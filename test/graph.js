@@ -1,7 +1,7 @@
 'use strict'
 
 const assert = require('assert').strict
-const { buildGraph } = require('../lib/graph.js')
+const { buildGraph, traverse } = require('../lib/graph.js')
 const { makeModules } = require('./utils')
 
 describe('buildGraph', () => {
@@ -197,10 +197,10 @@ describe('buildGraph', () => {
 
     const graph = await buildGraph('/code/index.js', { resolve })
 
-    const { imports } = graph.edge('/code/index.js', '/code/a.js')
+    const { importedNames } = graph.edge('/code/index.js', '/code/a.js')
 
     assert.deepEqual(
-      imports.map(i => i.importedName),
+      importedNames,
       ['a', 'b']
     )
 
@@ -232,12 +232,9 @@ describe('buildGraph', () => {
 
     const graph = await buildGraph('/code/index.js', { resolve })
 
-    const { imports } = graph.edge('/code/index.js', '/code/a.js')
+    const { importedNames } = graph.edge('/code/index.js', '/code/a.js')
 
-    assert.deepEqual(
-      imports.map(i => i.importedName),
-      ['theFunction', 'anUnusedFunction']
-    )
+    assert.deepEqual(importedNames, ['theFunction', 'anUnusedFunction'])
   })
 
   it('collects proxy exports (export ... from)', async () => {
@@ -355,6 +352,92 @@ describe('buildGraph', () => {
     )
   })
 
+  describe('node.exportsAll', () => {
+    it('marks modules which need a * export', async () => {
+      const resolve = makeModules({
+        '/code/index.js': `
+          import * as x from "./a.js";
+
+          console.log(x)
+        `,
+        '/code/a.js': `
+          export const theFunction = () => null
+        `
+      })
+
+      const graph = await buildGraph('/code/index.js', { resolve })
+
+      assert.equal(graph.node('/code/a.js').exportsAll, true)
+    })
+
+    it('does not mark cjs exports with default export', async () => {
+      const resolve = makeModules({
+        '/code/index.js': `
+          import * as x from "./a.js";
+
+          console.log(x)
+        `,
+        '/code/a.js': `
+          module.exports = () => null
+        `
+      })
+
+      const graph = await buildGraph('/code/index.js', { resolve })
+
+      assert.equal(graph.node('/code/a.js').exportsAll, false)
+    })
+
+    it('marks cjs exports without default export', async () => {
+      const resolve = makeModules({
+        '/code/index.js': `
+          import * as x from "./a.js";
+
+          console.log(x)
+        `,
+        '/code/a.js': `
+          exports.theFunction = () => null
+        `
+      })
+
+      const graph = await buildGraph('/code/index.js', { resolve })
+
+      assert.equal(graph.node('/code/a.js').exportsAll, true)
+    })
+
+    it('does not mark cjs exports without default export if exports are only picked', async () => {
+      const resolve = makeModules({
+        '/code/index.js': `
+          import { theFunction } from "./a.js";
+
+          console.log(theFunction)
+        `,
+        '/code/a.js': `
+          exports.theFunction = () => null
+        `
+      })
+
+      const graph = await buildGraph('/code/index.js', { resolve })
+
+      assert(!graph.node('/code/a.js').exportsAll)
+    })
+
+    it('marks cjs exports without default when default-imported', async () => {
+      const resolve = makeModules({
+        '/code/index.js': `
+          import a from './a.js'
+          console.log(a)
+        `,
+        '/code/a.js': `
+          exports.theFunction = () => null
+        `
+      })
+
+      const graph = await buildGraph('/code/index.js', { resolve })
+
+      assert.equal(graph.node('/code/a.js').exportsAll, true)
+    })
+  })
+
   it('borks when importing a non-exported name', async () => {
     const resolve = makeModules({
       '/code/index.js': `
@@ -374,3 +457,35 @@ describe('buildGraph', () => {
 
   it.skip('borks when importing a non-existing module')
 })
+
+describe('traverse', () => {
+  it('traverses a graph in dependency order', async () => {
+    const resolve = makeModules({
+      '/code/index.js': `
+        import * as x from "./a.js";
+
+        console.log(x)
+      `,
+      '/code/a.js': `
+        export const theFunction = () => null
+      `
+    })
+
+    const graph = await buildGraph('/code/index.js', { resolve })
+
+    const traverseArgs = []
+
+    await traverse({ resolve, graph, entry: '/code/index.js' }, ({ parent, module }) => {
+      traverseArgs.push({ parent, module })
+    })
+
+    const index = await resolve(null, '/code/index.js')
+    const a = await resolve(null, '/code/a.js')
+
+    assert.deepEqual(traverseArgs, [
+      { parent: index, module: a },
+      { parent: null, module: index }
+    ])
+  })
+})
+

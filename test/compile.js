@@ -49,15 +49,16 @@ describe('compile', () => {
         ;
         var _$_1001_foo = 'foo';
         ;
-        alert(_$_1000_default);
-        alert({
+        var _$_1002_all = {
           get foo() {
             return _$_1001_foo
           },
           set foo(value) {
             _$_1001_foo = value
           },
-        });
+        }
+        alert(_$_1000_default);
+        alert(_$_1002_all);
       `
     )
   })
@@ -98,7 +99,7 @@ describe('compile', () => {
         var _$_1000_x = 4
         var _$_1001_y = 5
         var _$_1002_default = 6
-        var a = {
+        var _$_1003_all = {
           get x() {
             return _$_1000_x
           },
@@ -112,7 +113,7 @@ describe('compile', () => {
             return _$_1002_default
           }
         }
-        alert(a)
+        alert(_$_1003_all)
       `
     )
   })
@@ -145,6 +146,35 @@ describe('compile', () => {
   it('default imports from commonjs default exports', async () => {
     const [resolve, graph] = await makeGraph({
       '/index.js': `
+        import foo from "./a.js"
+        alert(foo)
+      `,
+      '/a.js': `
+        module.exports = { bar: 42 }
+      `
+    })
+
+    jsEqual(
+      await opt('/index.js', resolve, graph),
+      `
+        var _$_1000_bar = 42;
+        ;
+        var _$_1001_all = {
+          get bar() {
+            return _$_1000_bar
+          },
+          set bar(value) {
+            _$_1000_bar = value
+          }
+        }
+        alert(_$_1001_all)
+      `
+    )
+  })
+
+  it('default imports and pick-imports from commonjs default exports', async () => {
+    const [resolve, graph] = await makeGraph({
+      '/index.js': `
         import foo, { bar } from "./a.js"
         alert(foo, bar)
       `,
@@ -158,7 +188,7 @@ describe('compile', () => {
       `
         var _$_1000_bar = 42;
         ;
-        var foo = {
+        var _$_1001_all = {
           get bar() {
             return _$_1000_bar
           },
@@ -166,7 +196,7 @@ describe('compile', () => {
             _$_1000_bar = value
           }
         }
-        alert(foo, _$_1000_bar)
+        alert(_$_1001_all, _$_1000_bar)
       `
     )
   })
@@ -210,6 +240,65 @@ describe('compile', () => {
         var _$_1000_default = 42;
         ;  // <- TODO what's this?
         foo(_$_1000_default);
+      `
+    )
+  })
+
+  it('imports of cjs without default exports', async () => {
+    const [resolve, graph] = await makeGraph({
+      '/index.js': `
+        import x from "./x.js"
+        foo(x)
+      `,
+      '/x.js': `
+        exports.foo = 42
+      `
+    })
+
+    jsEqual(
+      await opt('/index.js', resolve, graph),
+      `
+        var _$_1000_foo = 42;
+        ;
+        var _$_1001_all = {
+          get foo() {
+            return _$_1000_foo
+          },
+          set foo(value) {
+            _$_1000_foo = value
+          }
+        }
+        ;  // <- TODO what's this?
+        foo(_$_1001_all);
+      `
+    )
+  })
+
+  it('require calls for cjs without default exports', async () => {
+    const [resolve, graph] = await makeGraph({
+      '/index.js': `
+        foo(require('./x.js'))
+      `,
+      '/x.js': `
+        exports.x = 42
+      `
+    })
+
+    jsEqual(
+      await opt('/index.js', resolve, graph),
+      `
+        var _$_1000_x = 42;
+        ;
+        var _$_1001_all = {
+          get x() {
+            return _$_1000_x
+          },
+          set x(value) {
+            _$_1000_x = value
+          }
+        }
+        ;  // <- TODO what's this?
+        foo(_$_1001_all);
       `
     )
   })
